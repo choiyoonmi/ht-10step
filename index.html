@@ -62,6 +62,20 @@ body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;background:#f0
 .wb-sub{font-size:11px;color:var(--muted);margin-top:2px}
 .btn-print{display:inline-flex;align-items:center;gap:5px;background:var(--navy);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer}
 .btn-print:hover{background:var(--navy-d)}
+.print-all{position:absolute;left:-100000px;top:0;width:190mm;background:#fff}
+.print-step{background:#fff}
+.print-step-head{background:var(--navy);color:#fff;padding:14px 18px;margin-bottom:14px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.print-step-title{font-size:16px;font-weight:700}
+.print-step-sub{font-size:10px;color:var(--gold);margin-top:3px}
+.print-intro{margin-bottom:12px}
+.print-columns{width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0}
+.print-col{width:50%;vertical-align:top;padding:0 10px}
+.print-col+.print-col{border-left:1px solid #e5e5e5}
+.print-col .srow,.print-col .ob,.print-col .fixed-box{break-inside:avoid;page-break-inside:avoid}
+.worksheet-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px}
+.worksheet-col{min-width:0}
+.worksheet-col+.worksheet-col{border-left:1px solid #ddd;padding-left:20px}
+.worksheet-col>.srow,.worksheet-col>.ob,.worksheet-col>.fixed-box{break-inside:avoid;page-break-inside:avoid}
 
 .wb{background:#fff;border-radius:12px;overflow:hidden;border:.5px solid #ddd}
 .wb-head{background:var(--navy);padding:16px 20px;position:relative}
@@ -124,17 +138,23 @@ body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;background:#f0
 .log-line.done{color:#27ae60}
 
 @media print{
-  .site-header,.step-bar,.sidebar,.wb-topbar,.tabs{display:none!important}
+  .site-header,.step-bar,.sidebar,.wb-topbar,.tabs,.wb{display:none!important}
   .two-col{display:block}
   body{background:#fff}
-  .wb{border:none;border-radius:0}
-  .wb-head{background:var(--navy)!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .wb-head-logo{opacity:.4!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .print-all{display:block!important;position:static!important;left:auto!important;top:auto!important;width:auto!important}
+  .print-step{break-after:page;page-break-after:always;padding-bottom:8px}
+  .print-step:last-child{break-after:auto;page-break-after:auto}
+  .print-columns{display:table!important;width:100%!important;table-layout:fixed!important;border-collapse:separate!important}
+  .print-col{display:table-cell!important;width:50%!important;vertical-align:top!important;padding:0 5mm!important}
+  .print-col+.print-col{border-left:.5px solid #ddd}
+  .worksheet-columns{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8mm}
+  .worksheet-col+.worksheet-col{border-left:.5px solid #ddd;padding-left:8mm}
   .main{padding:0}
   .srow{page-break-inside:avoid}
   @page{margin:1.2cm 1.5cm;size:A4}
 }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body>
 
@@ -162,13 +182,17 @@ body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;background:#f0
           <div class="upload-zone" id="drop" onclick="document.getElementById('fi').click()">
             <div class="upload-icon"><i class="ti ti-cloud-upload"></i></div>
             <div class="upload-title">시험지 PDF 업로드</div>
-            <div class="upload-desc">어떤 PDF든 상관없어요<br>AI가 지문을 자동으로 읽습니다</div>
+            <div class="upload-desc">텍스트형 PDF를 업로드하세요<br>브라우저에서 영어 지문을 바로 읽습니다</div>
             <button class="btn-upload" onclick="event.stopPropagation()"><i class="ti ti-upload"></i> 파일 선택</button>
           </div>
           <input type="file" id="fi" accept=".pdf" style="display:none" onchange="onFile(event)">
           <div id="plist-wrap" style="display:none;margin-top:12px">
             <div style="font-size:11px;font-weight:600;color:var(--navy);margin-bottom:4px">추출된 지문 선택</div>
             <div class="plist" id="plist"></div>
+            <div class="mini-row">
+              <div class="btn-mini" onclick="allPassagesOn()">전체 선택</div>
+              <div class="btn-mini" onclick="allPassagesOff()">전체 해제</div>
+            </div>
           </div>
         </div>
       </div>
@@ -191,7 +215,7 @@ body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;background:#f0
         <div class="empty">
           <div class="empty-icon"><i class="ti ti-file-description"></i></div>
           <div class="empty-title">PDF를 업로드하세요</div>
-          <div class="empty-desc">AI가 지문을 추출하고<br>10STEP 연습지를 자동 생성합니다</div>
+          <div class="empty-desc">PDF에서 영어 지문을 추출하고<br>10STEP 연습지를 자동 생성합니다</div>
         </div>
       </div>
     </div>
@@ -223,7 +247,7 @@ const STEPS=[
   {n:9,l:"문단 배열",d:"3개의 문단을 올바른 순서로 배열하세요."},
   {n:10,l:"영작 연습",d:"해석과 제시어를 보고 영어 문장을 완성하세요."},
 ];
-let passages=[],curIdx=0,selSteps=new Set([1,2,3,4,5,6,7,8,9,10]),curTab=1;
+let passages=[],curIdx=0,selPassages=new Set(),activePassage=null,selSteps=new Set([1,2,3,4,5,6,7,8,9,10]),curTab=1;
 
 function buildGBar(){
   const b=document.getElementById("gbar");b.innerHTML="";
@@ -260,17 +284,19 @@ drop.addEventListener("drop",e=>{e.preventDefault();drop.classList.remove("drag"
 function onFile(e){const f=e.target.files[0];if(f)processFile(f)}
 
 function processFile(file){
+  if(file.size>25*1024*1024){
+    alert("PDF 파일이 너무 큽니다. 25MB 이하 파일을 선택해 주세요.");
+    return;
+  }
   showOv();
-  const reader=new FileReader();
-  reader.onload=async ev=>{ const b64=ev.result.split(",")[1]; await extractAI(file.name,b64); };
-  reader.readAsDataURL(file);
+  extractLocalPDF(file);
 }
 
 let pv=0,pt=null;
 function showOv(){
   document.getElementById("ov").style.display="flex";
   pv=0;clearInterval(pt);
-  const stages=[{p:15,m:"PDF 파일 읽는 중..."},{p:35,m:"AI가 지문 텍스트 분석 중..."},{p:60,m:"문장별 추출 및 해석 생성 중..."},{p:85,m:"10STEP 구조 매핑 중..."}];
+  const stages=[{p:15,m:"PDF 파일 읽는 중..."},{p:35,m:"페이지별 텍스트 추출 중..."},{p:60,m:"영어 문장 구분 중..."},{p:85,m:"10STEP 구조 매핑 중..."}];
   let si=0;
   pt=setInterval(()=>{
     if(si<stages.length&&pv>=stages[si].p-1){addLog(stages[si].m);si++}
@@ -278,6 +304,12 @@ function showOv(){
   },80);
 }
 function hideOv(){clearInterval(pt);setP(100);setTimeout(()=>document.getElementById("ov").style.display="none",600)}
+function showExtractionError(message){
+  clearInterval(pt);
+  document.getElementById("ov").style.display="none";
+  setP(0);
+  alert(message);
+}
 function setP(v){document.getElementById("pf").style.width=v+"%";document.getElementById("pl").textContent=Math.round(v)+"%"}
 function addLog(msg){
   const lb=document.getElementById("log");
@@ -285,6 +317,62 @@ function addLog(msg){
   const d=document.createElement("div");d.className="log-line act";
   d.innerHTML=`<span class="li">⟳</span><span>${msg}</span>`;
   lb.appendChild(d);lb.scrollTop=lb.scrollHeight;
+}
+
+async function extractLocalPDF(file){
+  try{
+    if(!window.pdfjsLib)throw new Error("PDF_READER_UNAVAILABLE");
+    pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    const bytes=await file.arrayBuffer();
+    const pdf=await pdfjsLib.getDocument({data:bytes}).promise;
+    const found=[];
+    for(let pageNo=1;pageNo<=pdf.numPages;pageNo++){
+      const page=await pdf.getPage(pageNo);
+      const content=await page.getTextContent();
+      const lines=content.items.map(item=>item.str.trim()).filter(Boolean).join(" ");
+      const sentences=splitEnglishSentences(lines);
+      for(let i=0;i<sentences.length;i+=8){
+        const chunk=sentences.slice(i,i+8);
+        if(chunk.length<2)continue;
+        found.push({
+          no:`${pageNo}페이지${sentences.length>8?`-${Math.floor(i/8)+1}`:""}`,
+          type:"PDF 영어 지문",
+          sentences:chunk.map(e=>({e,k:"해석을 직접 작성하세요."}))
+        });
+      }
+      setP(20+(pageNo/pdf.numPages)*68);
+    }
+    if(!found.length)throw new Error("NO_TEXT");
+    passages=found;
+    curIdx=0;
+    selPassages=new Set(found.map((_,i)=>i));
+    addLog(`${found.length}개 지문 추출 완료`);
+    hideOv();
+    showPList();
+  }catch(err){
+    console.error(err);
+    const message=err.message==="NO_TEXT"
+      ?"영어 텍스트를 찾지 못했습니다. 사진으로 스캔된 PDF는 OCR 기능이 있는 서버가 필요합니다."
+      :err.message==="PDF_READER_UNAVAILABLE"
+        ?"PDF 읽기 모듈을 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 페이지를 새로고침해 주세요."
+        :"PDF를 처리하지 못했습니다. 손상되지 않은 PDF인지 확인해 주세요.";
+    showExtractionError(message);
+  }
+}
+
+function splitEnglishSentences(text){
+  const normalized=text
+    .replace(/\s+/g," ")
+    .replace(/(\w)-\s+(\w)/g,"$1$2")
+    .trim();
+  const candidates=normalized.match(/[^.!?]+(?:[.!?]+["']?|$)/g)||[];
+  return candidates
+    .map(s=>s.trim())
+    .filter(s=>{
+      const letters=(s.match(/[A-Za-z]/g)||[]).length;
+      const words=(s.match(/\b[A-Za-z][A-Za-z'-]*\b/g)||[]).length;
+      return letters>=20&&words>=4;
+    });
 }
 
 async function extractAI(fname,b64){
@@ -304,23 +392,38 @@ async function extractAI(fname,b64){
   ]
 }
 
-규칙: 영어 독해 지문만 추출(듣기 스크립트 제외), 영어 원문 절대 수정 금지, JSON만 반환`;
+  규칙: 영어 독해 지문만 추출(듣기 스크립트 제외), 영어 원문 절대 수정 금지, JSON만 반환`;
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),120000);
   try{
     const res=await fetch("https://api.anthropic.com/v1/messages",{
       method:"POST",headers:{"Content-Type":"application/json"},
+      signal:controller.signal,
       body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:8000,
         messages:[{role:"user",content:[
           {type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}},
           {type:"text",text:prompt}
         ]}]})
     });
+    if(!res.ok){
+      const detail=await res.text();
+      throw new Error(`API 요청 실패 (${res.status}): ${detail.slice(0,200)}`);
+    }
     const data=await res.json();
     const text=(data.content||[]).filter(c=>c.type==="text").map(c=>c.text).join("");
     const clean=text.replace(/```json\n?/g,"").replace(/```\n?/g,"").trim();
     const parsed=JSON.parse(clean);
-    if(parsed.passages&&parsed.passages.length>0){passages=parsed.passages;curIdx=0;hideOv();showPList();}
+    if(parsed.passages&&parsed.passages.length>0){passages=parsed.passages;curIdx=0;selPassages=new Set(passages.map((_,i)=>i));hideOv();showPList();}
     else throw new Error("no passages");
-  }catch(err){console.error(err);demoFallback(fname)}
+  }catch(err){
+    console.error(err);
+    const message=err.name==="AbortError"
+      ?"AI 분석 요청이 2분 안에 끝나지 않아 중단했습니다. 잠시 후 다시 시도해 주세요."
+      :"AI 연결에 실패했습니다. 이 정적 HTML에는 Anthropic API 인증 정보가 없어 실제 PDF 추출을 실행할 수 없습니다. 서버 API 연결이 필요합니다.";
+    showExtractionError(message);
+  }finally{
+    clearTimeout(timeout);
+  }
 }
 
 function demoFallback(fname){
@@ -340,7 +443,7 @@ function demoFallback(fname){
       {e:"Accordingly, deforestation is a major issue when it comes to global warming.",k:"따라서, 삼림 벌채는 지구 온난화와 관련하여 주요한 문제이다."},
     ]}
   ];
-  curIdx=0;addLog("⚠ API 키 연결 필요 — 데모 지문으로 미리보기 ("+fname+")");
+  curIdx=0;selPassages=new Set(passages.map((_,i)=>i));addLog("⚠ API 키 연결 필요 — 데모 지문으로 미리보기 ("+fname+")");
   hideOv();showPList();
 }
 
@@ -348,23 +451,51 @@ function showPList(){
   const w=document.getElementById("plist-wrap"),pl=document.getElementById("plist");
   w.style.display="block";pl.innerHTML="";
   passages.forEach((p,i)=>{
-    const t=document.createElement("div");t.className="ptag"+(i===curIdx?" on":"");
+    const t=document.createElement("div");t.className="ptag"+(selPassages.has(i)?" on":"");
     t.textContent=p.no;
-    t.onclick=()=>{curIdx=i;document.querySelectorAll(".ptag").forEach(x=>x.classList.remove("on"));t.classList.add("on")};
+    t.onclick=()=>{
+      curIdx=i;
+      selPassages.has(i)?selPassages.delete(i):selPassages.add(i);
+      t.classList.toggle("on",selPassages.has(i));
+    };
     pl.appendChild(t);
   });
 }
 
+function allPassagesOn(){
+  selPassages=new Set(passages.map((_,i)=>i));
+  showPList();
+}
+
+function allPassagesOff(){
+  selPassages.clear();
+  showPList();
+}
+
+function getSelectedPassage(){
+  const selected=[...selPassages].sort((a,b)=>a-b).map(i=>passages[i]).filter(Boolean);
+  if(!selected.length)return null;
+  if(selected.length===1)return {...selected[0],groups:selected};
+  return {
+    no:`전체 ${selected.length}개 지문`,
+    type:"통합 연습지",
+    sentences:selected.flatMap(p=>p.sentences),
+    groups:selected
+  };
+}
+
 function build(){
-  const p=passages[curIdx];
-  if(!p){alert("먼저 PDF를 업로드하세요");return}
+  const p=getSelectedPassage();
+  if(!passages.length){alert("먼저 PDF를 업로드하세요");return}
+  if(!p){alert("지문을 1개 이상 선택하세요");return}
   if(!selSteps.size){alert("STEP을 1개 이상 선택하세요");return}
+  activePassage=p;
   curTab=[...selSteps].sort((a,b)=>a-b)[0];
   const sorted=[...selSteps].sort((a,b)=>a-b);
   document.getElementById("wb-area").innerHTML=`
     <div class="wb-topbar">
       <div><div class="wb-title">${p.no} | ${p.type}</div><div class="wb-sub">STEP: ${sorted.map(n=>"STEP "+n).join(" · ")}</div></div>
-      <button class="btn-print" onclick="window.print()"><i class="ti ti-printer"></i> 인쇄하기</button>
+      <button class="btn-print" onclick="downloadAllSteps()"><i class="ti ti-file-type-pdf"></i> 전체 STEP PDF 저장</button>
     </div>
     <div class="wb">
       <div class="wb-head">
@@ -377,6 +508,7 @@ function build(){
       <div class="tabs" id="tabs"></div>
       <div class="wb-body" id="wbody"></div>
     </div>`;
+  document.getElementById("wb-area").insertAdjacentHTML("beforeend",'<div class="print-all" id="print-all"></div>');
   makeTabs();renderStep(curTab);
 }
 
@@ -391,6 +523,32 @@ function makeTabs(){
   });
 }
 
+function downloadAllSteps(){
+  const printArea=document.getElementById("print-all");
+  const body=document.getElementById("wbody");
+  const p=activePassage||getSelectedPassage();
+  if(!printArea||!body||!p){
+    alert("먼저 연습지를 생성하세요.");
+    return;
+  }
+  const currentStep=curTab;
+  const pages=[];
+  [...selSteps].sort((a,b)=>a-b).forEach(n=>{
+    renderStep(n);
+    pages.push(`
+      <section class="print-step">
+        <div class="print-step-head">
+          <div class="print-step-title">${p.no} | STEP ${n}: ${STEPS[n-1].l}</div>
+          <div class="print-step-sub">HappyTree Academy · 10 STEP 집중 연습지</div>
+        </div>
+        <div class="wb-body">${body.innerHTML}</div>
+      </section>`);
+  });
+  printArea.innerHTML=pages.join("");
+  renderStep(currentStep);
+  setTimeout(()=>window.print(),300);
+}
+
 const VM={"is":"(be)","are":"(be)","was":"(be)","were":"(be)","has":"(have)","have":"(have)","had":"(have)","grows":"(grow)","grew":"(grow)","feels":"(feel)","felt":"(feel)","found":"(find)","makes":"(make)","made":"(make)","gets":"(get)","got":"(get)","said":"(say)","turned":"(turn)","added":"(add)","allows":"(allow)","helps":"(help)","reflects":"(reflect)","retained":"(retain)","transcends":"(transcend)","struggled":"(struggle)","decided":"(decide)","spent":"(spend)","performed":"(perform)","settled":"(settle)","corrodes":"(corrode)","shaped":"(shape)","continued":"(continue)","reached":"(reach)","increased":"(increase)","dropped":"(drop)","converted":"(convert)","prevented":"(prevent)","caused":"(cause)"};
 const CP=[["connecting","connected"],["Despite","Although"],["retained","retaining"],["have","having"],["reflected","reflecting"],["spontaneous","spontaneously"],["passive","passively"],["destructive","destruction"],["breadth","depth"],["gradually","gradual"],["narrow","broad"],["consciously","conscious"],["unpredictable","unpredictably"],["hesitant","hesitantly"]];
 const NOUNS=["creativity","certainty","experience","memory","guilt","shame","dopamine","homeostasis","deforestation","atmosphere","language","beliefs","behaviors","conservation","literature","expression","breadth","imagination","solution","motivation","knowledge","justification","hesitation","mechanical","relief","donation","expedition","wildlife","viewfinder","boundary","spontaneous","microscopic","variability","spectator","vocalist","recognition","competition","dedication","jealousy","uncertainty","development","connection","minimalism","observer"];
@@ -402,7 +560,9 @@ function blankE(e){const ws=e.match(new RegExp(`\\b(${NOUNS.join("|")})[a-z]*\\b
 function errInject(t){const errs=[[/\bconnecting\b/,'<span class="err-u">connected</span>'],[/\bpassive\b/,'<span class="err-u">passively</span>'],[/\breadth\b/,'<span class="err-u">depth</span>'],[/\bspontaneous\b/,'<span class="err-u">spontaneously</span>'],[/\bdestructive\b/,'<span class="err-u">destruction</span>']];let r=t,c=0;for(const[re,rep]of errs){if(c>=3)break;if(re.test(r)){r=r.replace(re,rep);c++}}return r}
 
 function renderStep(n){
-  const ss=passages[curIdx].sentences;const st=STEPS[n-1];
+  const p=activePassage||getSelectedPassage();
+  if(!p)return;
+  const ss=p.sentences;const st=STEPS[n-1];
   let h=`<div class="step-badge-row"><span class="sbadge">STEP ${n}</span><span class="sbadge-gold">${st.l}</span></div>`;
   h+=`<div class="step-inst">${st.d}</div>`;
   if(n===1){ss.forEach((s,i)=>{h+=`<div class="srow"><div class="snum">${i+1}.</div><div class="eng">${s.e}</div><div class="kor">${s.k}</div></div>`})}
@@ -412,10 +572,16 @@ function renderStep(n){
   else if(n===5){ss.forEach((s,i)=>{h+=`<div class="srow"><div class="snum">${i+1}.</div><div class="eng">${vb(s.e)}</div></div>`})}
   else if(n===6){ss.forEach((s,i)=>{h+=`<div class="srow"><div class="snum">${i+1}.</div><div class="eng">${addCP(s.e)}</div></div>`})}
   else if(n===7){
-    const full=ss.map(s=>s.e).join(" ");
-    h+=`<div style="font-size:11px;color:var(--muted);background:#f9f9f9;border-radius:7px;padding:7px 12px;border-left:3px solid var(--navy);margin-bottom:12px">다음 지문에서 어법상 어색한 곳 <strong>3개</strong>를 찾아 바르게 고쳐 쓰시오.</div>`;
-    h+=`<div class="eng" style="line-height:2;margin-bottom:14px">${errInject(full)}</div>`;
-    [1,2,3].forEach(i=>{h+=`<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:6px"><span style="font-weight:700;color:var(--navy);min-width:20px">(${i})</span><input class="bi" style="width:130px" placeholder="틀린 표현"><span style="color:var(--muted)">→</span><input class="bi" style="width:130px" placeholder="바른 표현"></div>`});
+    const groups=p.groups||[p];
+    h+=`<div style="font-size:11px;color:var(--muted);background:#f9f9f9;border-radius:7px;padding:7px 12px;border-left:3px solid var(--navy);margin-bottom:12px">각 문단에서 어법상 어색한 곳을 찾아 바르게 고쳐 쓰시오.</div>`;
+    groups.forEach((group,gi)=>{
+      const full=group.sentences.map(s=>s.e).join(" ");
+      h+=`<div class="srow" style="border:1px solid #ddd;border-radius:9px;padding:12px;margin-bottom:14px;page-break-inside:avoid">`;
+      h+=`<div class="snum" style="font-size:11px;margin-bottom:7px">지문 ${gi+1} · ${group.no}</div>`;
+      h+=`<div class="eng" style="line-height:2;margin-bottom:12px">${errInject(full)}</div>`;
+      [1,2,3].forEach(i=>{h+=`<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:6px"><span style="font-weight:700;color:var(--navy);min-width:20px">(${i})</span><input class="bi" style="width:130px" placeholder="틀린 표현"><span style="color:var(--muted)">→</span><input class="bi" style="width:130px" placeholder="바른 표현"></div>`});
+      h+=`</div>`;
+    });
   }
   else if(n===8){
     const first=ss[0];const rest=[...ss.slice(1)].sort(()=>Math.random()-.5);const lb=["(A)","(B)","(C)","(D)","(E)","(F)","(G)","(H)"];
@@ -436,7 +602,21 @@ function renderStep(n){
       h+=`<div class="blank-eng">${Array(wc).fill('<span class="bw"></span>').join("")}</div></div>`;
     });
   }
-  const wb=document.getElementById("wbody");if(wb)wb.innerHTML=h;
+  const wb=document.getElementById("wbody");
+  if(wb){
+    const source=document.createElement("div");
+    source.innerHTML=h;
+    const intro=[...source.children].filter(el=>el.classList.contains("step-badge-row")||el.classList.contains("step-inst"));
+    const items=[...source.children].filter(el=>!el.classList.contains("step-badge-row")&&!el.classList.contains("step-inst"));
+    const left=[],right=[];
+    items.forEach((el,i)=>(i%2===0?left:right).push(el.outerHTML));
+    wb.innerHTML=`
+      <div class="print-intro">${intro.map(el=>el.outerHTML).join("")}</div>
+      <div class="worksheet-columns">
+        <div class="worksheet-col">${left.join("")}</div>
+        <div class="worksheet-col">${right.join("")}</div>
+      </div>`;
+  }
 }
 </script>
 </body>
