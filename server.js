@@ -16,7 +16,12 @@ app.post('/api/extract-pdf', async (req, res) => {
     const { filename, base64 } = req.body;
     const apiKey = process.env.CLAUDE_API_KEY;
 
+    console.log(`[${new Date().toISOString()}] PDF 처리 시작: ${filename}`);
+    console.log(`Base64 길이: ${base64?.length || 'undefined'}`);
+    console.log(`API 키 설정: ${apiKey ? '있음' : '없음'}`);
+
     if (!apiKey) {
+      console.error('❌ CLAUDE_API_KEY가 설정되지 않았습니다');
       return res.status(500).json({ error: '서버: CLAUDE_API_KEY 환경변수가 설정되지 않았습니다' });
     }
 
@@ -45,6 +50,7 @@ app.post('/api/extract-pdf', async (req, res) => {
 5. k 필드는 해당 영어 문장의 자연스러운 한국어 번역만 넣으세요.
 6. JSON만 반환하고 코드블록이나 다른 설명은 넣지 마세요.`;
 
+    console.log('Claude API 호출 중...');
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -76,15 +82,17 @@ app.post('/api/extract-pdf', async (req, res) => {
       })
     });
 
+    console.log(`Claude API 응답: ${response.status} ${response.statusText}`);
     if (!response.ok) {
       const errorData = await response.text();
-      console.error('Claude API Error:', response.status, errorData);
+      console.error('❌ Claude API Error:', response.status, errorData);
       return res.status(response.status).json({
         error: `Claude API 오류 ${response.status}: ${errorData}`
       });
     }
 
     const data = await response.json();
+    console.log('✅ Claude API 처리 완료');
     const text = (data.content || [])
       .filter(c => c.type === 'text')
       .map(c => c.text)
